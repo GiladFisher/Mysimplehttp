@@ -47,14 +47,25 @@ void send_request(const char *request) {
     close(client_socket);
 }
 
-int main() {
-    // Example GET request
-    printf("Sending GET request:\n");
-    send_request("GET download/test.txt HTTP/1.1\r\nHost: localhost\r\n\r\n");
+int main(int argc, char *argv[]) {
+    if (argc == 2) {
+        char request[BUFFER_SIZE];
+        snprintf(request, sizeof(request), "GET /download/%s HTTP/1.1\r\nHost: localhost\r\n\r\n", argv[1]);
+        printf("Sending GET request:\n");
+        send_request(request);
+    }
 
-    // Example POST request
-    printf("\nSending POST request:\n");
-    send_request("POST download/hello.txt HTTP/1.1\r\nHost: localhost\r\nContent-Length: 11\r\n\r\nHello World");
+    else{
+        // Example GET request
+        printf("Sending GET request:\n");
+        send_request("GET download/test.txt HTTP/1.1\r\nHost: localhost\r\n\r\n");
+
+        // Example POST request
+        printf("\nSending POST request:\n");
+        send_request("POST download/hello.txt HTTP/1.1\r\nHost: localhost\r\nContent-Length: 11\r\n\r\nHello World");
+
+    }
+    
 
     return 0;
 }
