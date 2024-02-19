@@ -21,14 +21,15 @@ void *handle_client(void *arg) {
 
     // Parse the request to get the HTTP method (GET or POST)
     char method[10];
-    sscanf(buffer, "%s", method);
-
+    char path[BUFFER_SIZE];
+    sscanf(buffer, "%s %s", method, path);
+    printf("Method: %s, Path: %s\n", method, path);
     if (strcmp(method, "GET") == 0) {
         // Handle GET request
         // Open and read the file
-        pthread_mutex_lock(&mutex);
-        FILE *file = fopen(FILE_PATH, "r");
-        if (file == NULL) {
+        pthread_mutex_lock(&mutex); // Lock the file to prevent other clients from accessing it
+        FILE *file = fopen(path, "r");
+        if (file == NULL) { 
             perror("Error opening file");
             pthread_mutex_unlock(&mutex);
             close(client_socket);
@@ -46,7 +47,7 @@ void *handle_client(void *arg) {
         // Handle POST request
         // Open file in append mode and write data from client
         pthread_mutex_lock(&mutex);
-        FILE *file = fopen(FILE_PATH, "a");
+        FILE *file = fopen(path, "a");
         if (file == NULL) {
             perror("Error opening file");
             pthread_mutex_unlock(&mutex);
@@ -113,7 +114,7 @@ int main() {
         // Handle client request in a separate thread
         pthread_t tid;
         pthread_create(&tid, NULL, handle_client, &client_socket);
-        pthread_detach(tid);
+        pthread_detach(tid); 
     }
 
     close(server_socket);

@@ -50,11 +50,11 @@ void send_request(const char *request) {
 int main() {
     // Example GET request
     printf("Sending GET request:\n");
-    send_request("GET /test.txt HTTP/1.1\r\nHost: localhost\r\n\r\n");
+    send_request("GET download/test.txt HTTP/1.1\r\nHost: localhost\r\n\r\n");
 
     // Example POST request
     printf("\nSending POST request:\n");
-    send_request("POST /submit HTTP/1.1\r\nHost: localhost\r\nContent-Length: 11\r\n\r\nHello World");
+    send_request("POST download/hello.txt HTTP/1.1\r\nHost: localhost\r\nContent-Length: 11\r\n\r\nHello World");
 
     return 0;
 }
