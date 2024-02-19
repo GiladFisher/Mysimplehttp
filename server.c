@@ -30,11 +30,16 @@ void *handle_client(void *arg) {
         pthread_mutex_lock(&mutex); // Lock the file to prevent other clients from accessing it
         FILE *file = fopen(path, "r");
         if (file == NULL) { 
+            const char *not_found_response = "HTTP/1.1 404 Not Found\r\n\r\n";
+            send(client_socket, not_found_response, strlen(not_found_response), 0);
             perror("Error opening file");
             pthread_mutex_unlock(&mutex);
             close(client_socket);
             return NULL;
         }
+
+        const char *ok_response = "200 OK\r\n\r\n";
+        send(client_socket, ok_response, strlen(ok_response), 0);
 
         char file_buffer[BUFFER_SIZE];
         while (fgets(file_buffer, BUFFER_SIZE, file) != NULL) {
@@ -49,6 +54,8 @@ void *handle_client(void *arg) {
         pthread_mutex_lock(&mutex);
         FILE *file = fopen(path, "a");
         if (file == NULL) {
+            const char *internal_server_error_response = "500 Internal Server Error\r\n\r\n";
+            send(client_socket, internal_server_error_response, strlen(internal_server_error_response), 0);
             perror("Error opening file");
             pthread_mutex_unlock(&mutex);
             close(client_socket);
