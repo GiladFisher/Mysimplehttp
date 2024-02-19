@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <arpa/inet.h>
 #include <pthread.h>
 
 #define BUFFER_SIZE 1024
@@ -74,8 +75,11 @@ int main() {
     server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket < 0) {
         perror("Error creating socket");
+        close(server_socket);
         exit(EXIT_FAILURE);
     }
+    int enable = 1;
+    setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int));
 
     // Bind server address
     server_addr.sin_family = AF_INET;
@@ -84,12 +88,14 @@ int main() {
 
     if (bind(server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
         perror("Error binding");
+        close(server_socket);
         exit(EXIT_FAILURE);
     }
 
     // Listen for incoming connections
     if (listen(server_socket, 5) < 0) {
         perror("Error listening");
+        close(server_socket);
         exit(EXIT_FAILURE);
     }
 
@@ -100,6 +106,7 @@ int main() {
         client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &client_len);
         if (client_socket < 0) {
             perror("Error accepting connection");
+            close(server_socket);
             exit(EXIT_FAILURE);
         }
 

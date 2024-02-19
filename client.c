@@ -50,7 +50,7 @@ void send_request(const char *request) {
 int main() {
     // Example GET request
     printf("Sending GET request:\n");
-    send_request("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
+    send_request("GET /test.txt HTTP/1.1\r\nHost: localhost\r\n\r\n");
 
     // Example POST request
     printf("\nSending POST request:\n");
