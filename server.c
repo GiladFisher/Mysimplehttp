@@ -3,14 +3,12 @@
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
-#include <pthread.h>
+#include <fcntl.h>
 
 #define BUFFER_SIZE 1024
 #define MAX_QUEUE 10
 
 #define SERVER_PORT 8080
-
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;  // Mutex for synchronizing access to shared resources
 
 // Structure to pass multiple arguments to the thread handling client requests
 typedef struct {
@@ -42,8 +40,6 @@ void *handle_client(void *arg) {
     //printf("Method: %s, Path: %s\n", method, full_path);
     
     if (strcmp(method, "GET") == 0) {
-        pthread_mutex_lock(&mutex); // Prevent concurrent file access
-
         // check that the file exists:
         FILE *file = fopen(full_path, "r");
         if (file == NULL) { 
@@ -52,8 +48,6 @@ void *handle_client(void *arg) {
             send(client_socket, not_found_response, strlen(not_found_response), 0);
             
             perror("Error opening file");
-            pthread_mutex_unlock(&mutex);
-            close(client_socket);
             return NULL;
         }
         fclose(file);
@@ -68,8 +62,6 @@ void *handle_client(void *arg) {
             send(client_socket, internal_error_response, strlen(internal_error_response), 0);
 
             perror("Error generating temp file");
-            pthread_mutex_unlock(&mutex);
-            close(client_socket);
             return NULL;
         }
         close(temp_fd);
@@ -84,8 +76,6 @@ void *handle_client(void *arg) {
 
             perror("Error encoding file");
             unlink(temp_file_template);
-            pthread_mutex_unlock(&mutex);
-            close(client_socket);
             fclose(file);
             return NULL;
         }
@@ -98,8 +88,6 @@ void *handle_client(void *arg) {
 
             perror("Error opening encoded file");
             unlink(temp_file_template);
-            pthread_mutex_unlock(&mutex);
-            close(client_socket);
             fclose(file);
             return NULL;
         }
@@ -107,6 +95,7 @@ void *handle_client(void *arg) {
         // Send a 200 OK response header before sending the file content:
         const char *ok_response = "200 OK\r\n";
         send(client_socket, ok_response, strlen(ok_response), 0);
+        usleep(1000);
 
         // Read the file and send its Base64-encoded content:
         int read;
@@ -119,6 +108,7 @@ void *handle_client(void *arg) {
             }
             else {
                 send(client_socket, encoded_buffer, BUFFER_SIZE, 0);
+                usleep(1000);
             }
         }
 
@@ -126,11 +116,29 @@ void *handle_client(void *arg) {
 
         fclose(encoded_file);
         unlink(temp_file_template);
-        pthread_mutex_unlock(&mutex);
     }
 
     else if (strcmp(method, "POST") == 0) {
-        pthread_mutex_lock(&mutex); // Prevent concurrent file access
+        // Lock the file:
+        struct flock lock;
+        memset(&lock, 0, sizeof(lock));
+        lock.l_type = F_WRLCK; // Exclusive lock
+        lock.l_whence = SEEK_SET;
+        lock.l_start = 0;
+        lock.l_len = 0; // Lock the whole file
+
+        // Added O_CREAT to create the file if it doesn't exist and 0666 for proper permissions
+        int file_fd = open(full_path, O_RDWR | O_CREAT, 0666);
+        if (file_fd < 0) {
+            perror("Error opening/creating file");
+            // Handle error, such as sending a 500 response and returning from the function
+        }
+
+        if (fcntl(file_fd, F_SETLK, &lock) == -1) {
+            perror("Failed to lock the file");
+            close(file_fd);
+            exit(EXIT_FAILURE);
+        }
 
         // Create and open a unique temporary file for the base64 encoded data:
         char temp_file_template[] = "/tmp/tempfileXXXXXX";
@@ -142,9 +150,14 @@ void *handle_client(void *arg) {
             send(client_socket, internal_error_response, strlen(internal_error_response), 0);
 
             perror("Error generating temp file");
-            pthread_mutex_unlock(&mutex);
-            close(client_socket);
-            return NULL;
+
+            lock.l_type = F_UNLCK;
+            if (fcntl(file_fd, F_SETLK, &lock) == -1) {
+                perror("Failed to unlock the file");
+            }
+            close(file_fd);
+
+            exit(EXIT_FAILURE);
         }
         close(temp_fd);
 
@@ -179,20 +192,26 @@ void *handle_client(void *arg) {
         snprintf(command, sizeof(command), "base64 --decode %s > %s", temp_file_template, full_path);
         if (system(command) != 0) {
             printf("Error decoding file.");
-            pthread_mutex_unlock(&mutex);
-            close(client_socket);
+            
+            lock.l_type = F_UNLCK;
+            if (fcntl(file_fd, F_SETLK, &lock) == -1) {
+                perror("Failed to unlock the file");
+            }
+            close(file_fd);
+
             unlink(temp_fd);
             exit(EXIT_FAILURE);
         }
 
-        //printf("File saved to %s\n", full_path);
+        // Unlock the file
+        lock.l_type = F_UNLCK;
+        if (fcntl(file_fd, F_SETLK, &lock) == -1) {
+            perror("Failed to unlock the file");
+        }
+        close(file_fd);
 
         unlink(temp_file_template);
-        pthread_mutex_unlock(&mutex);
     }
-
-    free(args);
-    close(client_socket);
 
     return NULL;
 }
@@ -261,15 +280,20 @@ int main(int argc, char *argv[]) {
         args->client_socket = client_socket;
         args->root_directory = root_directory;
 
-        // Handle client request in a separate thread
-        pthread_t tid;
-        if (pthread_create(&tid, NULL, handle_client, args) != 0) {
-            perror("Failed to create thread");
+        // Handle client request in a separate process
+        pid_t pid = fork();
+        if (pid == -1) {
+            perror("Failed to create process");
             free(args);
             close(client_socket);
-        }
-        else {
-            pthread_detach(tid);
+        } else if (pid == 0) {
+            // Child process
+            handle_client(args);
+            free(args);
+            close(client_socket);
+            exit(EXIT_SUCCESS);
+        } else {
+            // Parent process
         }
     }
 

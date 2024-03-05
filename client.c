@@ -9,45 +9,6 @@
 
 #define BUFFER_SIZE 1024
 
-void send_request(const char *request) {
-    int client_socket;
-    struct sockaddr_in server_addr;
-
-    // Create socket
-    client_socket = socket(AF_INET, SOCK_STREAM, 0);
-    if (client_socket < 0) {
-        perror("Error creating socket");
-        exit(EXIT_FAILURE);
-    }
-
-    // Configure server address
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = inet_addr(SERVER_IP);
-    server_addr.sin_port = htons(SERVER_PORT);
-
-    // Connect to server
-    if (connect(client_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-        perror("Error connecting to server");
-        exit(EXIT_FAILURE);
-    }
-
-    // Send request to server
-    if (send(client_socket, request, strlen(request), 0) < 0) {
-        perror("Error sending request");
-        exit(EXIT_FAILURE);
-    }
-
-    // Receive response from server
-    char buffer[BUFFER_SIZE] = {0};
-    while (recv(client_socket, buffer, BUFFER_SIZE, 0) > 0) {
-        printf("%s", buffer);
-        memset(buffer, 0, BUFFER_SIZE);
-    }
-
-    // Close socket
-    close(client_socket);
-}
-
 int main(int argc, char *argv[]) {
     if(argc < 3) {
         printf("GET Example: %s GET <path>\n", argv[0]);
@@ -77,10 +38,12 @@ int main(int argc, char *argv[]) {
     // Prepare request based on command line arguments:
     char buffer[BUFFER_SIZE] = {0};
     
-    if (strcmp(argv[1], "GET") == 0) {
+    if (strcmp(argv[1], "GET") == 0 && argc == 3) {
         snprintf(buffer, sizeof(buffer), "GET %s\r\n\r\n", argv[2]);
 
         send(sock, buffer, strlen(buffer), 0);
+        usleep(1000);
+
         printf("GET Request Sent: %s", buffer);
 
         // Receive and process the server's response
@@ -185,6 +148,7 @@ int main(int argc, char *argv[]) {
         char request_buffer[BUFFER_SIZE];
         snprintf(request_buffer, sizeof(request_buffer), "POST %s\r\n", argv[2]);
         send(sock, request_buffer, strlen(request_buffer), 0);
+        usleep(1000);
 
         // Read the file and send its Base64-encoded content:
         int read;
@@ -197,77 +161,12 @@ int main(int argc, char *argv[]) {
             }
             else {
                 send(sock, encoded_buffer, BUFFER_SIZE, 0);
+                usleep(1000);
             }
         }
 
         fclose(encoded_file);
         unlink(temp_file_template);
-
-        /*
-
-        // Create and open a unique temporary file for the base64 encoded data:
-        char temp_file_template[] = "/tmp/tempfileXXXXXX";
-        
-        int temp_fd = mkstemp(temp_file_template);
-        if (temp_fd == -1) {
-            close(sock);
-            perror("Error generating temp file");
-            return NULL;
-        }
-        close(temp_fd);
-
-        // Encode the file:
-        char command[512];
-        snprintf(command, sizeof(command), "base64 %s > %s", argv[3], temp_file_template);
-        if (system(command) != 0) {
-            close(sock);
-            unlink(temp_file_template);
-            perror("Error encoding file");
-            return NULL;
-        }
-
-        FILE *encoded_file = fopen(temp_file_template, "r");
-        if (encoded_file == NULL) { // Corrected variable name
-            close(sock);
-            unlink(temp_file_template);
-            perror("Error opening encoded file");
-            return NULL;
-        }
-
-        char request_buffer[BUFFER_SIZE]; // Buffer for formatted request
-        int bytes_read;
-        int first_packet = 1; // Flag to indicate the first packet
-
-        bytes_read = fread(buffer, 1, sizeof(buffer) - 1, encoded_file);
-
-        if (feof(encoded_file)) {
-            // Handling the edge case where only one packet is needed, this means the file was empty or very small.
-            snprintf(request_buffer, sizeof(request_buffer), "POST %s\r\n%s\r\n\r\n", argv[2], buffer);
-            send(sock, request_buffer, strlen(request_buffer), 0);
-        }
-        else {
-            // Format for the first packet, assuming there are multiple packets.
-            snprintf(request_buffer, sizeof(request_buffer), "POST %s\r\n%s", argv[2], buffer);
-            send(sock, request_buffer, strlen(request_buffer), 0);
-
-            while ((bytes_read = fread(buffer, 1, sizeof(buffer) - 1, encoded_file)) > 0) {
-                buffer[bytes_read] = '\0'; // Ensure the buffer is null-terminated
-
-                if (feof(encoded_file)) {
-                    // Format for the last packet
-                    snprintf(request_buffer, sizeof(request_buffer), "%s\r\n\r\n", buffer);
-                } else {
-                    // Format for intermediate packets or the single packet that fits everything
-                    strncpy(request_buffer, buffer, sizeof(request_buffer));
-                }
-
-                send(sock, request_buffer, strlen(request_buffer), 0);
-            }
-        }
-
-        fclose(encoded_file); // Close the file when done
-        unlink(temp_file_template); // Remove the temporary file
-        */
     }
     else {
         printf("Invalid command or insufficient arguments.\n");
