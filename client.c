@@ -44,7 +44,7 @@ int main(int argc, char *argv[]) {
         send(sock, buffer, strlen(buffer), 0);
         usleep(1000);
 
-        printf("GET Request Sent: %s", buffer);
+        printf("Request Sent: %s", buffer);
 
         // Receive and process the server's response
         int read_bytes;
@@ -57,7 +57,7 @@ int main(int argc, char *argv[]) {
         read_bytes = read(sock, response_buffer, BUFFER_SIZE);
         if (read_bytes > 0) {
             response_buffer[read_bytes] = '\0'; // Ensure null-termination
-            printf("Server response:\n");
+            //printf("Server response:\n");
 
             // Check if it's a "200 OK" response
             if (strstr(response_buffer, "200 OK") != NULL) {
@@ -72,32 +72,33 @@ int main(int argc, char *argv[]) {
                     if (strstr(response_buffer, "\r\n\r\n") != NULL) {
                         char *end = strstr(response_buffer, "\r\n\r\n");
                         fwrite(response_buffer, sizeof(char), (end - response_buffer), temp_file);
-                        printf("%s", response_buffer);
+                        //printf("%s", response_buffer);
 
                         end_of_message = 1;
                     }
                     else {
                         fwrite(response_buffer, sizeof(char), read_bytes, temp_file);
-                        printf("%s", response_buffer);
+                        //printf("%s", response_buffer);
                     }
                 }
 
                 fclose(temp_file);
 
+                printf("File contents:\n");
+
                 char command[512];
-                snprintf(command, sizeof(command), "base64 --decode temp.txt > decoded.txt");
+                snprintf(command, sizeof(command), "base64 --decode temp.txt");
                 if (system(command) != 0) {
                     printf("Error decoding file.");
                     close(sock);
                     exit(EXIT_FAILURE);
                 }
+                printf("\n");
 
                 if (remove(temp_file_name) != 0) {
                     perror("Error deleting file");
                     return 1;
                 }
-
-                printf("Message received and saved to decoded.txt\n");
             } else {
                 printf("Failed to receive message: %s\n", response_buffer);
             }
