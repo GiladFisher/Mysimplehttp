@@ -143,6 +143,68 @@ int main(int argc, char *argv[]) {
         }
     }
     else if (strcmp(argv[1], "POST") == 0 && argc == 4) {
+        // check that the file exists:
+        FILE *file = fopen(argv[3], "r");
+        if (file == NULL) { 
+            perror("Error opening file");
+            close(sock);
+            return NULL;
+        }
+        fclose(file);
+
+        // Create and open a unique temporary file for the base64 encoded data:
+        char temp_file_template[] = "/tmp/tempfileXXXXXX";
+        
+        int temp_fd = mkstemp(temp_file_template);
+        if (temp_fd == -1) {
+            perror("Error generating temp file");
+            close(sock);
+            return NULL;
+        }
+        close(temp_fd);
+
+        // Encode the file:
+        char command[512];
+        snprintf(command, sizeof(command), "base64 %s > %s", argv[3], temp_file_template);
+        if (system(command) != 0) {
+            perror("Error encoding file");
+            unlink(temp_file_template);
+            close(sock);
+            return NULL;
+        }
+
+        FILE *encoded_file = fopen(temp_file_template, "r");
+        if (file == NULL) {
+            perror("Error opening encoded file");
+            unlink(temp_file_template);
+            close(sock);
+            return NULL;
+        }
+
+        // Send a POST request:
+        char request_buffer[BUFFER_SIZE];
+        snprintf(request_buffer, sizeof(request_buffer), "POST %s\r\n", argv[2]);
+        send(sock, request_buffer, strlen(request_buffer), 0);
+
+        // Read the file and send its Base64-encoded content:
+        int read;
+        char encoded_buffer[BUFFER_SIZE];
+        while ((read = fread(encoded_buffer, sizeof(char), BUFFER_SIZE, encoded_file)) > 0) {
+            if (read < BUFFER_SIZE) {
+                memcpy(encoded_buffer + read, "\r\n\r\n", 4);
+                read += 4;
+                send(sock, encoded_buffer, BUFFER_SIZE, 0);
+            }
+            else {
+                send(sock, encoded_buffer, BUFFER_SIZE, 0);
+            }
+        }
+
+        fclose(encoded_file);
+        unlink(temp_file_template);
+
+        /*
+
         // Create and open a unique temporary file for the base64 encoded data:
         char temp_file_template[] = "/tmp/tempfileXXXXXX";
         
@@ -205,6 +267,7 @@ int main(int argc, char *argv[]) {
 
         fclose(encoded_file); // Close the file when done
         unlink(temp_file_template); // Remove the temporary file
+        */
     }
     else {
         printf("Invalid command or insufficient arguments.\n");

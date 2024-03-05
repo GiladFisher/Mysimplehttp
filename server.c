@@ -39,7 +39,7 @@ void *handle_client(void *arg) {
     char full_path[BUFFER_SIZE];
     snprintf(full_path, sizeof(full_path), "%s%s", root_directory, path);
 
-    printf("Method: %s, Path: %s\n", method, full_path);
+    //printf("Method: %s, Path: %s\n", method, full_path);
     
     if (strcmp(method, "GET") == 0) {
         pthread_mutex_lock(&mutex); // Prevent concurrent file access
@@ -148,53 +148,44 @@ void *handle_client(void *arg) {
         }
         close(temp_fd);
 
-        // Decode the Base64 content from the request and write it to the file:
-        char *data_start = strstr(buffer, "\r\n") + 2;  // Locate start of encoded data
-        char *data_end = strstr(data_start, "\r\n\r\n");    // Locate end of encoded data
-        
-        FILE *encoded_file = fopen(temp_file_template, "r");
-        if (encoded_file == NULL) {
-            // Send a 500 response if the file cannot be opened:
-            const char *internal_error_response = "500 INTERNAL ERROR\r\n\r\n";
-            send(client_socket, internal_error_response, strlen(internal_error_response), 0);
+        FILE *temp_file = fopen(temp_file_template, "w+");
 
-            perror("Error opening encoded file");
-            unlink(temp_file_template);
-            pthread_mutex_unlock(&mutex);
-            close(client_socket);
-            return NULL;
-        }
+        int read_bytes;
+        char response_buffer[BUFFER_SIZE+1];
 
-        // Calculate the length of the data to be written, excluding the last 2 characters
-        int length_to_write = strlen(data_start) - 2;
-        if (length_to_write > 0) { // Ensure there's data to write
-            // Write data to file, excluding the last 2 characters
-            if (fwrite(data_start, sizeof(char), length_to_write, encoded_file) != length_to_write) {
-                perror("Failed to write data to file");
-                unlink(temp_file_template);
-                pthread_mutex_unlock(&mutex);
-                close(client_socket);
-                return NULL;
+        int end_of_message = 0;
+        while (!end_of_message) {
+            // Read data from the server
+            read_bytes = recv(client_socket, response_buffer, BUFFER_SIZE, 0);
+            response_buffer[read_bytes] = '\0'; // Ensure null-termination
+
+            // Write received data to the temporary file, excluding the initial "200 OK\r\n" and the "\r\n\r\n" at the end
+            if (strstr(response_buffer, "\r\n\r\n") != NULL) {
+                char *end = strstr(response_buffer, "\r\n\r\n");
+                fwrite(response_buffer, sizeof(char), (end - response_buffer), temp_file);
+                //printf("%s\n", response_buffer);
+
+                end_of_message = 1;
+            }
+            else {
+                fwrite(response_buffer, sizeof(char), read_bytes, temp_file);
+                //printf("%s", response_buffer);
             }
         }
-        fclose(encoded_file);
 
-        // Decode the file:
+        fclose(temp_file);
+
         char command[512];
         snprintf(command, sizeof(command), "base64 --decode %s > %s", temp_file_template, full_path);
         if (system(command) != 0) {
-            // Send a 500 response if file cannot be encoded:
-            const char *internal_error_response = "500 INTERNAL ERROR\r\n\r\n";
-            send(client_socket, internal_error_response, strlen(internal_error_response), 0);
-
-            perror("Error encoding file");
-            unlink(temp_file_template);
+            printf("Error decoding file.");
             pthread_mutex_unlock(&mutex);
             close(client_socket);
-            return NULL;
+            unlink(temp_fd);
+            exit(EXIT_FAILURE);
         }
 
-        printf("File saved.\n\n");
+        //printf("File saved to %s\n", full_path);
 
         unlink(temp_file_template);
         pthread_mutex_unlock(&mutex);
