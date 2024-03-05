@@ -63,6 +63,15 @@ int main(int argc, char *argv[]) {
             if (strstr(response_buffer, "200 OK") != NULL) {
                 int end_of_message = 0;
 
+                // Handle case where we got one packet
+                if (strstr(response_buffer, "\r\n\r\n") != NULL) {
+                    char *start = strstr(response_buffer, "\r\n") + 2;
+                    char *end = strstr(response_buffer, "\r\n\r\n");
+                    fwrite(start, sizeof(char), (end - start), temp_file);
+
+                    end_of_message = 1;
+                }
+
                 while (!end_of_message) {
                     // Read data from the server
                     read_bytes = read(sock, response_buffer, BUFFER_SIZE);
@@ -87,7 +96,7 @@ int main(int argc, char *argv[]) {
                 printf("File contents:\n");
 
                 char command[512];
-                snprintf(command, sizeof(command), "base64 --decode temp.txt");
+                snprintf(command, sizeof(command), "base64 --decode %s", temp_file_name);
                 if (system(command) != 0) {
                     printf("Error decoding file.");
                     close(sock);

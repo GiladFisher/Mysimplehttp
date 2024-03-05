@@ -26,7 +26,7 @@ void *handle_client(void *arg) {
 
     // Receive the request from the client:
     recv(client_socket, buffer, BUFFER_SIZE, 0);
-    printf("Received from client: %s\n", buffer);
+    printf("Received from client: %s", buffer);
 
     // Parse the request to get the HTTP method (GET or POST)
     char method[10];
@@ -112,7 +112,7 @@ void *handle_client(void *arg) {
             }
         }
 
-        printf("File sent.\n\n");
+        printf("File sent.\n");
 
         fclose(encoded_file);
         unlink(temp_file_template);
@@ -239,7 +239,11 @@ int main(int argc, char *argv[]) {
 
     // Allow the socket to be rapidly reused during server restarts:
     int enable = 1;
-    setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int));
+    setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable));
+
+    // Enable TCP Keepalive on the socket
+    enable = 1;
+    setsockopt(server_socket, SOL_SOCKET, SO_KEEPALIVE, &enable, sizeof(enable));
 
     // Bind the server socket to a port:
     server_addr.sin_family = AF_INET;
