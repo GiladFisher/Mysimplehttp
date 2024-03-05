@@ -1,6 +1,6 @@
 #flags 
 
-all: server client async_client
+all: server client
 
 server: server.c
 	gcc -o server server.c -lpthread

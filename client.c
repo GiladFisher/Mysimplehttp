@@ -51,7 +51,7 @@ void send_request(const char *request) {
 int main(int argc, char *argv[]) {
     if(argc < 3) {
         printf("GET Example: %s GET <path>\n", argv[0]);
-        printf("POST Example: %s POST <path> <data path>\n", argv[0]);
+        printf("POST Example: %s POST <path on server> <input path>\n", argv[0]);
         exit(EXIT_FAILURE);
     }
     
@@ -62,6 +62,9 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
+    // Initialize server address structure
+    struct sockaddr_in server_addr;
+    
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(SERVER_PORT);
 
@@ -79,6 +82,65 @@ int main(int argc, char *argv[]) {
 
         send(sock, buffer, strlen(buffer), 0);
         printf("GET Request Sent: %s", buffer);
+
+        // Receive and process the server's response
+        int read_bytes;
+        char response_buffer[BUFFER_SIZE+1];
+
+        char temp_file_name[] = "temp.txt";
+        FILE *temp_file = fopen(temp_file_name, "w+");
+
+        // Read response header
+        read_bytes = read(sock, response_buffer, BUFFER_SIZE);
+        if (read_bytes > 0) {
+            response_buffer[read_bytes] = '\0'; // Ensure null-termination
+            printf("Server response:\n");
+
+            // Check if it's a "200 OK" response
+            if (strstr(response_buffer, "200 OK") != NULL) {
+                int end_of_message = 0;
+
+                while (!end_of_message) {
+                    // Read data from the server
+                    read_bytes = read(sock, response_buffer, BUFFER_SIZE);
+                    response_buffer[read_bytes] = '\0'; // Ensure null-termination
+
+                    // Write received data to the temporary file, excluding the initial "200 OK\r\n" and the "\r\n\r\n" at the end
+                    if (strstr(response_buffer, "\r\n\r\n") != NULL) {
+                        char *end = strstr(response_buffer, "\r\n\r\n");
+                        fwrite(response_buffer, sizeof(char), (end - response_buffer), temp_file);
+                        printf("%s", response_buffer);
+
+                        end_of_message = 1;
+                    }
+                    else {
+                        fwrite(response_buffer, sizeof(char), read_bytes, temp_file);
+                        printf("%s", response_buffer);
+                    }
+                }
+
+                fclose(temp_file);
+
+                char command[512];
+                snprintf(command, sizeof(command), "base64 --decode temp.txt > decoded.txt");
+                if (system(command) != 0) {
+                    printf("Error decoding file.");
+                    close(sock);
+                    exit(EXIT_FAILURE);
+                }
+
+                if (remove(temp_file_name) != 0) {
+                    perror("Error deleting file");
+                    return 1;
+                }
+
+                printf("Message received and saved to decoded.txt\n");
+            } else {
+                printf("Failed to receive message: %s\n", response_buffer);
+            }
+        } else {
+            perror("Read error");
+        }
     }
     else if (strcmp(argv[1], "POST") == 0 && argc == 4) {
         // Create and open a unique temporary file for the base64 encoded data:
@@ -94,7 +156,7 @@ int main(int argc, char *argv[]) {
 
         // Encode the file:
         char command[512];
-        snprintf(command, sizeof(command), "base64 %s > %s", argv[2], temp_file_template);
+        snprintf(command, sizeof(command), "base64 %s > %s", argv[3], temp_file_template);
         if (system(command) != 0) {
             close(sock);
             unlink(temp_file_template);
@@ -110,12 +172,11 @@ int main(int argc, char *argv[]) {
             return NULL;
         }
 
-        char buffer[BUFFER_SIZE-12]; // Example buffer size for file reading
         char request_buffer[BUFFER_SIZE]; // Buffer for formatted request
         int bytes_read;
         int first_packet = 1; // Flag to indicate the first packet
 
-        bytes_read = fread(buffer, 1, sizeof(buffer) - 1, encoded_file)
+        bytes_read = fread(buffer, 1, sizeof(buffer) - 1, encoded_file);
 
         if (feof(encoded_file)) {
             // Handling the edge case where only one packet is needed, this means the file was empty or very small.
@@ -149,29 +210,6 @@ int main(int argc, char *argv[]) {
         printf("Invalid command or insufficient arguments.\n");
         close(sock);
         exit(EXIT_FAILURE);
-    }
-
-    // Await and process the server's response
-    int read_bytes = read(sock, buffer, sizeof(buffer) - 1);
-    if (read_bytes > 0) {
-        buffer[read_bytes] = '\0'; // Ensure null-termination
-        printf("Server response:\n%s\n", buffer);
-
-        // If it's a GET request, decode the Base64 content
-        if (strcmp(argv[1], "GET") == 0) {
-            // Find the start of the Base64 content
-            char *base64_start = strstr(buffer, "\r\n") + 2;
-            if (base64_start) {
-                char decoded_content[BUFFER_SIZE] = {0};
-                if (decode_base64(base64_start, decoded_content, sizeof(decoded_content))) {
-                    printf("Decoded content:\n%s\n", decoded_content);
-                } else {
-                    fprintf(stderr, "Failed to decode content.\n");
-                }
-            }
-        }
-    } else {
-        perror("Read error");
     }
 
     close(sock);
